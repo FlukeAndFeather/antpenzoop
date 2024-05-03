@@ -57,7 +57,7 @@ rownames(zoop_mtx) <- zoop$TowID
 # pseudo_log
 zoop_mtx <- log(zoop_mtx + 1)
 
-zoop_dist <- vegan::vegdist(zoop_mtx, method = "bray")
+zoop_dist <- vegdist(zoop_mtx, method = "bray")
 zoop_clust <- hclust(zoop_dist, method = "ward.D2")
 zoop_gap <- cluster_gap(zoop_mtx, max_k = 10, seed = 321)
 ggplot(zoop_gap, aes(k, gap)) +
@@ -105,32 +105,27 @@ zoop_sp <- vect(mutate(zoop, cluster = factor(zoop_cut[TowID])),
 ibsco <- rast("data/nogithub/IBCSO_v2_bed.tif")
 zoop_bbox_ibsco <- zoop_sp %>%
   project(crs(ibsco)) %>%
-  ext() * 2
+  ext() * 5
 ibsco <- crop(ibsco, zoop_bbox_ibsco)
-bathy_cont <- as.contour(ibsco, levels = c(-1000, -2500)) %>%
+bathy_cont <- as.contour(ibsco, levels = c(-500, -1000, -2500)) %>%
   mutate(depth = factor(-level))
-map_wkt <-
-'
-PROJCS["ProjWiz_Custom_Albers",
- GEOGCS["GCS_WGS_1984",
-  DATUM["D_WGS_1984",
-   SPHEROID["WGS_1984",6378137.0,298.257223563]],
-  PRIMEM["Greenwich",0.0],
-  UNIT["Degree",0.0174532925199433]],
- PROJECTION["Albers"],
- PARAMETER["False_Easting",0.0],
- PARAMETER["False_Northing",0.0],
- PARAMETER["Central_Meridian",-66],
- PARAMETER["Standard_Parallel_1",-68.25],
- PARAMETER["Standard_Parallel_2",-61.65],
- PARAMETER["Latitude_Of_Origin",-64.95],
- UNIT["Meter",1.0]
-'
 land <- as.polygons(ibsco >= 0) %>% filter(elevation == 1)
+map_proj <- '+proj=aea +lon_0=-66 +lat_1=-68.25 +lat_2=-61.65 +lat_0=-64.95 +datum=WGS84 +units=m +no_defs'
+
+map_bbox <- project(zoop_sp, map_proj) %>% ext() * 1.5
+graticule <- st_graticule(lon = seq(-80, -40, by = 10),
+                          lat = seq(-70, -58, by = 2)) %>%
+  st_transform(map_proj)
 ggplot() +
-  geom_spatvector(data = land, fill = )
-  geom_spatvector(aes(linetype = depth), bathy_cont, color = "grey50", linewidth = 0.25) +
+  geom_sf(data = graticule, color = "grey") +
+  geom_spatvector(data = land, fill = "grey20", color = NA) +
+  geom_spatvector(aes(linetype = depth), bathy_cont,
+                  color = "navy", linewidth = 0.25, alpha = 0.75) +
   geom_spatvector(aes(color = cluster), zoop_sp) +
   scale_color_brewer(palette = "Dark2") +
-  scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
-  coord_sf(crs = map_wkt)
+  scale_linetype_manual(values = c("dotted", "solid", "dashed")) +
+  coord_sf(crs = sf::st_crs(map_proj),
+           xlim = map_bbox[1:2], ylim = map_bbox[3:4],
+           label_axes = "ENEN") +
+  theme(legend.position = "bottom")
+ggsave("scratch/lteramlrclusters.png")
